@@ -1,0 +1,57 @@
+services:
+  dd-agent:
+    container_name: dd-agent
+    #  agent version > 7.47.0 include remote configuration enabled
+    image: "datadog/agent:7.56.1"
+    environment:
+      - DD_SITE=datadoghq.com
+      - DD_API_KEY=<ENTER_YOUR_API_KEY>
+      - DD_HOSTNAME=dd-agent-mylaptop
+      - DD_PROCESS_AGENT_ENABLED=true
+      - DD_ENV=dev
+    ## APM
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+    ## DOGSTATSD
+      - DD_DOGSTATSD_PORT=8125
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+    ## LOGS
+      - DD_LOGS_ENABLED=true
+    ports:
+      - 8125:8125/udp # for Dogstatsd
+      - 8126:8126/tcp
+    # https://docs.datadoghq.com/containers/docker/log/?tab=containerinstallation
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro \
+      - /opt/datadog-agent/run:/opt/datadog-agent/run:rw
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - /etc/passwd:/etc/passwd:ro # LIVE PROCESSES
+  notes-app:
+    container_name: notes-app-docker
+    image: min499/notes-app-docker:0.1
+    command: ["/bin/bash", "-c", "ddtrace-run python -m notes_app.app"]
+    environment:
+      - DD_ENV=dev
+      - DD_SERVICE=notes-app-docker
+      - DD_VERSION=0.1
+      - DD_SERVICE_MAPPING=sqlite:notes-app-docker-sqlite
+      - DD_LOGS_INJECTION=true
+      - DD_AGENT_HOST=dd-agent
+      - DD_RUNTIME_METRICS_ENABLED=true
+      - DD_DYNAMIC_INSTRUMENTATION_ENABLED=true
+    ports:
+      - "8080:8080"
+    depends_on:
+      - dd-agent
+  client-app:
+    container_name: notes-client
+    image: min499/notes-app-docker:0.1
+    volumes:
+      - ./generate-traffic.sh:/app/generate-traffic.sh
+    command: ["/bin/bash", "-c", "/app/generate-traffic.sh"]
+    environment:
+      - DD_ENV=dev
+      - NOTES_APP_HOST=notes-app
+    depends_on:
+      - notes-app
